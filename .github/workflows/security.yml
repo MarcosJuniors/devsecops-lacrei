@@ -39,6 +39,7 @@ jobs:
       - name: OWASP ZAP Baseline Scan
         run: |
           docker run --rm \
+            --user 0 \
             --network host \
             -v "${{ github.workspace }}:/zap/wrk/:rw" \
             ghcr.io/zaproxy/zaproxy:stable \
