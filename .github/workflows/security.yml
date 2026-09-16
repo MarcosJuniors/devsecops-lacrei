@@ -1,0 +1,54 @@
+name: Security Scan
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build da imagem
+        run: docker build -t devsecops-lacrei .
+
+      - name: Inicia aplicação
+        run: |
+          docker run -d \
+            --name devsecops-lacrei \
+            --network host \
+            devsecops-lacrei
+
+      - name: Aguarda aplicação
+        run: |
+          for i in {1..30}; do
+            if curl -s http://localhost:3000/status; then
+              exit 0
+            fi
+            sleep 2
+          done
+          exit 1
+
+      - name: OWASP ZAP Baseline Scan
+        run: |
+          docker run --rm \
+            --network host \
+            -v "${{ github.workspace }}:/zap/wrk/:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py \
+            -t http://localhost:3000 \
+            -r zap-report.html
+
+      - name: Upload do relatório ZAP
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap-report.html
