@@ -50,3 +50,9 @@ jobs:
 
       - name: Publica imagem
         run: docker push marcos98mj/devsecops-lacrei:${IMAGE_TAG}
+
+      - name: Deploy no Render
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          curl -X POST \
+            "${{ secrets.RENDER_DEPLOY_HOOK }}&imgURL=docker.io/marcos98mj/devsecops-lacrei:${IMAGE_TAG}"
