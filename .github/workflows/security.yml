@@ -45,6 +45,7 @@ jobs:
             ghcr.io/zaproxy/zaproxy:stable \
             zap-baseline.py \
             -t http://localhost:3000 \
+            -I \
             -r zap-report.html
 
       - name: Upload do relatório ZAP
