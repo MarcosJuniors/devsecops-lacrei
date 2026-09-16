@@ -36,5 +36,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build da imagem Docker
-        run: docker build -t devsecops-lacrei .
+      - name: Login no Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build da imagem
+        run: docker build -t marcos98mj/devsecops-lacrei:latest .
+
+      - name: Publica imagem
+        run: docker push marcos98mj/devsecops-lacrei:latest
