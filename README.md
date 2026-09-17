@@ -1,32 +1,251 @@
-# DevSecOps Lacrei Saúde
+# DevSecOps — Lacrei Saúde
 
-Este projeto apresenta uma pipeline de CI/CD para uma API simples em Node.js, com testes automatizados, Docker, análise de segurança com OWASP ZAP, publicação da imagem no Docker Hub e deploy em ambiente público.
+Projeto desenvolvido para o desafio técnico de **DevSecOps da Lacrei Saúde**, com foco em automação de CI/CD, segurança de aplicações, containerização, rastreabilidade de versões e deploy automatizado.
 
-## Aplicação
+## Links
 
-A API possui o endpoint:
+* **Repositório:** https://github.com/MarcosJuniors/devsecops-lacrei
+* **Aplicação em produção:** https://devsecops-lacrei-latest.onrender.com/
+* **Health check:** https://devsecops-lacrei-latest.onrender.com/status
+* **GitHub Actions:** https://github.com/MarcosJuniors/devsecops-lacrei/actions
+* **Documentação completa no Notion:** https://cord-aerosteon-cfb.notion.site/3dedf9f11e1180c9b9a4f0dbca97bab2
+* **Relatório OWASP ZAP:** https://github.com/MarcosJuniors/devsecops-lacrei/actions/runs/35059173986/artifacts/10431972093
+
+---
+
+## Visão geral
+
+A solução implementa um pipeline DevSecOps utilizando:
+
+* GitHub Actions
+* Node.js 22
+* Docker
+* Docker Hub
+* OWASP ZAP
+* Render
+
+O fluxo automatiza testes, construção da imagem, análise de segurança, publicação da imagem e deploy da aplicação.
+
+---
+
+## Arquitetura do fluxo
 
 ```text
-GET /status
+Pull Request
+     │
+     ├── CI
+     │    ├── npm ci
+     │    ├── npm test
+     │    └── Build da imagem Docker
+     │
+     └── Security Scan
+          ├── Build da imagem
+          ├── Inicialização da aplicação
+          ├── Verificação de /status
+          └── OWASP ZAP
+     
+Merge na main
+     │
+     ▼
+Publicação da imagem com SHA
+     │
+     ▼
+Deploy automático no Render
+     │
+     ▼
+Health check
 ```
 
-Resposta:
+---
 
-```json
-{
-  "status": "ok"
-}
+## CI/CD
+
+O projeto utiliza GitHub Actions para automatizar o processo de integração e entrega.
+
+### CI
+
+O workflow de CI realiza:
+
+1. Checkout do código.
+2. Configuração do Node.js 22.
+3. Instalação das dependências com `npm ci`.
+4. Execução dos testes automatizados.
+5. Login no Docker Hub utilizando Secrets.
+6. Construção da imagem Docker.
+7. Publicação da imagem utilizando o SHA do commit.
+8. Acionamento do deploy no Render após alterações integradas na `main`.
+
+### Tag imutável
+
+A imagem é publicada utilizando o SHA do commit:
+
+```text
+marcos98mj/devsecops-lacrei:<GITHUB_SHA>
 ```
 
-A aplicação está disponível publicamente no Render:
+Essa estratégia permite identificar exatamente qual commit originou determinada imagem e facilita operações de rollback.
+
+A tag `latest` permanece configurada no serviço para referência da aplicação, enquanto o pipeline utiliza a tag baseada no SHA para garantir rastreabilidade da versão publicada.
+
+---
+
+## Testes
+
+Os testes são executados automaticamente pelo workflow:
+
+```bash
+npm ci
+npm test
+```
+
+Os checks `test`, `docker` e `zap` são obrigatórios para integração na branch `main`.
+
+---
+
+## Segurança
+
+O workflow `Security Scan` realiza uma análise de segurança utilizando o OWASP ZAP.
+
+O processo segue as etapas:
+
+1. Construção da imagem Docker.
+2. Inicialização da aplicação em container.
+3. Verificação da disponibilidade da aplicação.
+4. Validação do endpoint `/status`.
+5. Execução do OWASP ZAP Baseline Scan.
+6. Geração do relatório.
+7. Upload do relatório como artifact do GitHub Actions.
+
+A aplicação precisa estar disponível antes da execução do scanner.
+
+### Readiness
+
+O pipeline aguarda a aplicação responder em:
+
+```text
+http://localhost:3000/status
+```
+
+Somente após a aplicação estar disponível o ZAP é executado.
+
+### Comportamento dos alertas
+
+O Baseline Scan utiliza a opção `-I`.
+
+Essa configuração permite que alertas classificados como warnings pelo Baseline Scan não interrompam o workflow simplesmente por terem sido encontrados.
+
+Falhas de execução do scanner, inicialização da aplicação ou readiness continuam sendo tratadas como falhas do processo.
+
+---
+
+## Relatório OWASP ZAP
+
+O relatório gerado pelo ZAP é disponibilizado como artifact do GitHub Actions.
+
+**Relatório:**
+
+https://github.com/MarcosJuniors/devsecops-lacrei/actions/runs/35059173986/artifacts/10431972093
+
+O histórico das execuções pode ser consultado em:
+
+https://github.com/MarcosJuniors/devsecops-lacrei/actions
+
+---
+
+## Docker
+
+A aplicação é executada utilizando uma imagem baseada em:
+
+```dockerfile
+FROM node:22-alpine
+```
+
+Foram aplicadas medidas de hardening no container:
+
+* utilização de imagem Alpine;
+* atualização dos pacotes `libssl3` e `libcrypto3`;
+* instalação das dependências de produção com `npm ci --omit=dev`;
+* atualização do npm para uma versão compatível com Node.js 22;
+* execução da aplicação com o usuário não-root `node`;
+* utilização de `.dockerignore`;
+* exclusão das dependências de desenvolvimento da imagem final.
+
+A aplicação não é executada como `root`.
+
+---
+
+## Análise de vulnerabilidades
+
+Foram realizadas análises das dependências e da imagem Docker.
+
+### npm audit
+
+Resultado:
+
+```text
+found 0 vulnerabilities
+```
+
+### Docker Scout
+
+A imagem final analisada não apresentou vulnerabilidades conhecidas nas categorias:
+
+```text
+Critical: 0
+High:     0
+Medium:   0
+Low:      0
+```
+
+Durante a análise foram identificadas vulnerabilidades em componentes da imagem inicial. Foram realizados ajustes nas dependências e nos pacotes do sistema, seguida de uma nova construção e análise da imagem.
+
+---
+
+## Secrets
+
+O GitHub Actions utiliza os seguintes Secrets:
+
+```text
+DOCKERHUB_USERNAME
+DOCKERHUB_TOKEN
+RENDER_DEPLOY_HOOK
+```
+
+Os valores dos Secrets não fazem parte do código-fonte ou da documentação pública.
+
+Eles são utilizados pelos workflows somente nas etapas que necessitam de autenticação.
+
+---
+
+## Deploy
+
+O deploy da aplicação é realizado no Render.
+
+Serviço:
+
+```text
+devsecops-lacrei
+```
+
+Health check:
+
+```text
+/status
+```
+
+Após o merge na `main`, o pipeline publica a imagem Docker e aciona o deploy no Render.
+
+O deploy foi validado em produção.
+
+### Aplicação
 
 https://devsecops-lacrei-latest.onrender.com/
 
-O endpoint utilizado para validação e health check pode ser acessado em:
+### Health check
 
 https://devsecops-lacrei-latest.onrender.com/status
 
-A resposta esperada é:
+Resposta esperada:
 
 ```json
 {
@@ -34,23 +253,77 @@ A resposta esperada é:
 }
 ```
 
-## Tecnologias utilizadas
+---
 
-* Node.js
-* Express
-* Jest
-* Supertest
-* Docker
-* GitHub Actions
-* OWASP ZAP
-* Docker Hub
-* Render
+## Proteção da branch `main`
 
-## Executando localmente
+A branch `main` possui regras de proteção para evitar alterações diretas e operações destrutivas.
+
+As regras configuradas são:
+
+* Pull Request obrigatório antes do merge;
+* checks `test`, `docker` e `zap` obrigatórios;
+* bloqueio de force push;
+* restrição de exclusão da branch `main`.
+
+Fluxo utilizado:
+
+```text
+Branch de trabalho
+       ↓
+Pull Request
+       ↓
+test + docker + zap
+       ↓
+Merge
+       ↓
+main
+```
+
+Como o repositório é mantido individualmente, não foi configurada aprovação obrigatória de outro mantenedor. A revisão ocorre por meio do Pull Request e das verificações automatizadas obrigatórias.
+
+---
+
+## Rollback
+
+As imagens são publicadas utilizando o SHA do commit, permitindo identificar versões específicas da aplicação.
+
+Em caso de falha após um deploy, o procedimento de rollback é:
+
+1. Identificar o SHA da última versão conhecida como funcional.
+2. Localizar a imagem correspondente no Docker Hub.
+3. Configurar o serviço do Render para utilizar a imagem anterior.
+4. Realizar o deploy da versão anterior.
+5. Verificar o endpoint `/status`.
+6. Conferir os logs da aplicação.
+7. Registrar a causa da falha antes de uma nova implantação.
+
+### Critérios para rollback
+
+O rollback pode ser realizado quando ocorrer, por exemplo:
+
+* falha no health check;
+* indisponibilidade da aplicação;
+* erro crítico após o deploy;
+* falha na inicialização do container;
+* comportamento inesperado que comprometa a aplicação.
+
+### Validação após rollback
+
+Após o rollback devem ser verificados:
+
+* status do deploy no Render;
+* endpoint `/status`;
+* logs da aplicação;
+* disponibilidade da aplicação.
+
+---
+
+## Execução local
 
 ### Pré-requisitos
 
-* Node.js 22 ou superior
+* Node.js 22+
 * npm
 * Docker, caso queira executar a aplicação em container
 
@@ -60,291 +333,154 @@ A resposta esperada é:
 npm ci
 ```
 
-### Executar os testes
+### Testes
 
 ```bash
 npm test
 ```
 
-### Iniciar a aplicação
+### Execução
 
 ```bash
-node src/server.js
+npm start
 ```
 
-A API ficará disponível em:
+A aplicação será disponibilizada na porta `3000`.
 
-```text
-http://localhost:3000
-```
-
-Para verificar o funcionamento:
+Health check local:
 
 ```text
 http://localhost:3000/status
 ```
 
-## Docker
+---
 
-Para criar a imagem:
+## Execução com Docker
+
+Construir a imagem:
 
 ```bash
 docker build -t devsecops-lacrei .
 ```
 
-Para executar:
+Executar:
 
 ```bash
 docker run -p 3000:3000 devsecops-lacrei
 ```
 
-Depois, acesse:
+Health check:
 
 ```text
 http://localhost:3000/status
 ```
 
-A imagem utiliza o usuário não-root `node` para executar a aplicação e instala somente as dependências necessárias para produção.
+---
 
-O Dockerfile também atualiza os pacotes `libssl3` e `libcrypto3` do Alpine e utiliza npm 11.19.1.
+## Evidências
 
-## Pipeline
+### GitHub Actions
 
-A pipeline foi configurada utilizando GitHub Actions.
+Os workflows foram executados com sucesso, incluindo:
 
-O workflow de CI executa os testes da aplicação e, após a aprovação dos testes, realiza o build da imagem Docker e sua publicação no Docker Hub utilizando uma tag baseada no SHA do commit.
+* `test`;
+* `docker`;
+* `zap`.
 
-O fluxo principal é:
-
-```text
-Push ou Pull Request
-        |
-        v
-Instalação das dependências
-        |
-        v
-Testes automatizados
-        |
-        v
-Build da imagem Docker
-        |
-        v
-Publicação da imagem com tag baseada no SHA
-        |
-        v
-Deploy no Render
-```
-
-O deploy automático ocorre quando a alteração é integrada à branch `main`.
-
-A análise de segurança é realizada em um workflow específico utilizando OWASP ZAP.
-
-## Segurança
-
-As credenciais utilizadas pela pipeline não ficam armazenadas no código-fonte.
-
-Os seguintes valores são configurados como GitHub Secrets:
-
-```text
-DOCKERHUB_USERNAME
-DOCKERHUB_TOKEN
-RENDER_DEPLOY_HOOK
-```
-
-Os valores dos secrets não são expostos no repositório ou nos arquivos de configuração.
-
-O arquivo `.env` também está incluído no `.gitignore` e no `.dockerignore`.
-
-Além disso, a pipeline utiliza o OWASP ZAP para realizar uma análise automatizada da aplicação antes da publicação da imagem.
-
-O container também utiliza o usuário não-root `node`, reduzindo os privilégios do processo executado dentro da imagem.
-
-## OWASP ZAP
-
-O scan é realizado com o OWASP ZAP contra a aplicação em execução.
-
-O workflow:
-
-1. Faz o build da imagem Docker.
-2. Inicia a aplicação em um container.
-3. Aguarda o endpoint `/status` responder antes de iniciar o scan.
-4. Executa o OWASP ZAP Baseline Scan.
-5. Gera um relatório HTML.
-6. Publica o relatório como artifact da execução do GitHub Actions.
-
-O readiness check evita que o scan seja iniciado antes de a aplicação estar disponível.
-
-A execução utiliza a opção `-I`, permitindo que alertas classificados como warnings pelo ZAP não façam o processo falhar automaticamente. Falhas na inicialização da aplicação, no readiness check ou na execução do próprio processo de scan continuam interrompendo o workflow.
-
-O relatório é armazenado como artifact na execução do workflow de segurança.
-
-Relatório ZAP:
-
-https://github.com/MarcosJuniors/devsecops-lacrei/actions/runs/35059173986/artifacts/10431972093
-
-## Docker Hub
-
-A imagem é publicada no Docker Hub utilizando uma tag baseada no SHA do commit que gerou a imagem.
-
-Formato utilizado:
-
-```text
-marcos98mj/devsecops-lacrei:<commit-sha>
-```
-
-Essa estratégia evita depender exclusivamente da tag `latest` e permite identificar exatamente qual código foi utilizado para gerar cada imagem.
-
-As imagens identificadas pelo SHA também podem ser utilizadas para rollback.
-
-## Deploy
-
-O deploy foi realizado utilizando o Render a partir da imagem publicada no Docker Hub.
-
-A configuração utilizada pelo serviço está registrada no arquivo `render.yaml`.
-
-URL pública:
-
-https://devsecops-lacrei-latest.onrender.com/
-
-Endpoint de health check:
-
-https://devsecops-lacrei-latest.onrender.com/status
-
-O endpoint `/status` foi validado após o deploy e retorna:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-O Render utiliza `/status` como health check da aplicação.
-
-O workflow de CI utiliza um Deploy Hook do Render para disparar o deploy quando uma alteração é integrada à branch `main`.
-
-## Proteção da branch
-
-A branch `main` possui regras de proteção configuradas no GitHub.
-
-Entre as regras utilizadas estão:
-
-* necessidade de Pull Request para alterações na `main`;
-* exigência dos checks `test`, `docker` e `zap`;
-* bloqueio de force push;
-* restrição à exclusão da branch.
-
-As alterações são realizadas por meio de Pull Requests, permitindo que os checks de CI e segurança sejam executados antes da integração com a `main`.
-
-## Evidências das execuções
-
-As execuções dos workflows ficam disponíveis no GitHub Actions.
-
-As evidências incluem:
-
-* execução dos testes automatizados;
-* build da imagem Docker;
-* publicação da imagem utilizando tag baseada no SHA;
-* execução do OWASP ZAP;
-* geração do relatório de segurança;
-* execução do processo de deploy após integração com a `main`.
-
-Histórico dos workflows:
+Histórico:
 
 https://github.com/MarcosJuniors/devsecops-lacrei/actions
 
-## Rollback
+### OWASP ZAP
 
-A estratégia de rollback utiliza imagens identificadas pelo SHA do commit que gerou cada versão.
+Relatório:
 
-Formato:
+https://github.com/MarcosJuniors/devsecops-lacrei/actions/runs/35059173986/artifacts/10431972093
 
-```text
-marcos98mj/devsecops-lacrei:<commit-sha>
-```
+### Produção
 
-Caso uma versão apresente algum problema após o deploy, o procedimento é:
+Aplicação:
 
-1. Identificar a versão atualmente em execução.
-2. Identificar a última versão conhecida como estável.
-3. Selecionar a imagem correspondente ao SHA da versão estável.
-4. Atualizar o serviço para utilizar essa imagem.
-5. Realizar o deploy da versão anterior.
-6. Validar o endpoint `/status`.
-7. Confirmar que a aplicação voltou a responder corretamente.
+https://devsecops-lacrei-latest.onrender.com/
 
-O rollback deve ser considerado quando uma alteração causar indisponibilidade da aplicação, falha no health check ou comportamento incorreto identificado após o deploy.
+Health check:
 
-Após a reversão, o endpoint `/status` deve ser utilizado para validar a recuperação do serviço.
+https://devsecops-lacrei-latest.onrender.com/status
 
-## Análise de dependências e imagem
+---
 
-Foram realizadas verificações de segurança tanto nas dependências da aplicação quanto na imagem Docker.
+## Decisões técnicas
 
-A análise das dependências foi realizada com:
+### SHA para identificação das imagens
+
+A utilização do SHA permite rastrear uma imagem até o commit responsável pela sua construção e facilita rollback.
+
+### Container não-root
+
+A aplicação utiliza o usuário `node`, reduzindo os privilégios disponíveis dentro do container.
+
+### Dependências de produção
+
+A imagem final utiliza:
 
 ```bash
-npm audit
+npm ci --omit=dev
 ```
 
-O resultado foi:
+reduzindo componentes desnecessários no ambiente de execução.
 
-```text
-found 0 vulnerabilities
-```
+### Readiness antes do ZAP
 
-A imagem Docker também foi analisada utilizando Docker Scout.
+O pipeline verifica `/status` antes do scanner para garantir que a aplicação esteja disponível.
 
-A análise final da imagem não identificou vulnerabilidades conhecidas:
+### Separação dos workflows
 
-```text
-0 Critical
-0 High
-0 Medium
-0 Low
-```
+CI e Security Scan possuem responsabilidades distintas, facilitando a identificação de falhas durante o processo.
 
-Durante a análise, foram identificadas vulnerabilidades em componentes presentes na imagem base e em dependências utilizadas pelo npm. As versões vulneráveis foram atualizadas quando havia versão corrigida compatível.
-
-A imagem final utiliza somente as dependências necessárias para execução em produção (`npm ci --omit=dev`) e executa a aplicação com o usuário não-root `node`.
-
-## Decisões
-
-O Docker foi utilizado para manter um ambiente de execução consistente entre desenvolvimento, pipeline e deploy.
-
-O GitHub Actions foi escolhido para automatizar os testes, o build e a publicação da imagem.
-
-O OWASP ZAP foi utilizado para incluir uma etapa de análise de segurança no processo de CI/CD.
-
-O Docker Hub foi utilizado como registry para armazenar as imagens geradas pela pipeline.
-
-O Render foi utilizado para realizar o deploy público da aplicação utilizando uma imagem Docker.
-
-A utilização de tags baseadas no SHA do commit permite rastrear cada imagem publicada até o código que a originou e facilita o processo de rollback.
+---
 
 ## Estrutura do projeto
 
 ```text
-.
+devsecops-lacrei/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml
 │       └── security.yml
 ├── src/
-│   ├── app.js
-│   └── server.js
-├── tests/
-│   └── app.test.js
-├── .dockerignore
-├── .gitignore
 ├── Dockerfile
-├── package-lock.json
-├── package.json
+├── .dockerignore
 ├── render.yaml
+├── package.json
+├── package-lock.json
 └── README.md
 ```
 
-## Repositório
+---
 
-GitHub:
+## Documentação completa
 
-https://github.com/MarcosJuniors/devsecops-lacrei
+A documentação detalhada do desafio está disponível no Notion:
+
+**https://cord-aerosteon-cfb.notion.site/3dedf9f11e1180c9b9a4f0dbca97bab2**
+
+Ela contém informações adicionais sobre:
+
+* arquitetura DevSecOps;
+* CI/CD;
+* segurança;
+* OWASP ZAP;
+* Docker;
+* análise de vulnerabilidades;
+* deploy;
+* proteção da `main`;
+* rollback;
+* Secrets;
+* evidências;
+* decisões técnicas.
+
+---
+
+## Status do projeto
+
+**Concluído e pronto para entrega.**
