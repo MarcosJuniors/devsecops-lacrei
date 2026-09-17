@@ -42,8 +42,17 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Define tag da imagem
+        run: echo "IMAGE_TAG=${GITHUB_SHA}" >> $GITHUB_ENV
+
       - name: Build da imagem
-        run: docker build -t marcos98mj/devsecops-lacrei:latest .
+        run: docker build -t marcos98mj/devsecops-lacrei:${IMAGE_TAG} .
 
       - name: Publica imagem
-        run: docker push marcos98mj/devsecops-lacrei:latest
+        run: docker push marcos98mj/devsecops-lacrei:${IMAGE_TAG}
+
+      - name: Deploy no Render
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          curl -X POST \
+            "${{ secrets.RENDER_DEPLOY_HOOK }}&imgURL=docker.io/marcos98mj/devsecops-lacrei:${IMAGE_TAG}"
